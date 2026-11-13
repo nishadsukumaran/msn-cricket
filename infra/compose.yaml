@@ -1,0 +1,31 @@
+name: msn-cricket
+# Isolated local development database.
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: msn_cricket
+      POSTGRES_USER: msn_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local environment}
+    ports:
+      - "127.0.0.1:55438:5432"
+    volumes:
+      - msn_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U msn_owner -d msn_cricket"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  storage:
+    image: chrislusf/seaweedfs@sha256:ccad23e18639c8b98cee17e7100b95830a06077b56d8e5b006d6dcf8ec5e94a0
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-s3.config=/etc/msn/s3.json", "-volume.max=2", "-master.volumeSizeLimitMB=128", "-ip=storage", "-ip.bind=0.0.0.0", "-master.telemetry=false"]
+    ports:
+      - "127.0.0.1:59018:8333"
+    volumes:
+      - msn_storage:/data
+      - ./s3.local.json:/etc/msn/s3.json:ro
+
+volumes:
+  msn_storage:
+  msn_postgres:

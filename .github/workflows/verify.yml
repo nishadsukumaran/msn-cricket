@@ -1,0 +1,52 @@
+name: Verify MSN Cricket
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node scripts/setup-local.mjs
+      - run: npm run storage:config
+      - run: docker compose -f infra/compose.yaml up -d --wait
+      - run: npm run db:migrate
+      - run: npm run test:fresh
+      - run: npm run storage:init
+      - run: npm test
+      - run: npm run test:integration
+      - run: npm run test:prototype
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run format:check
+      - run: npm run build
+      - run: npm audit
+      - run: npx playwright install --with-deps chromium
+      - name: Start rehearsal services
+        run: |
+          mkdir -p artifacts
+          npm run dev:api > artifacts/api.log 2>&1 &
+          npm run dev:web > artifacts/web.log 2>&1 &
+          node scripts/wait-http.mjs http://localhost:4018/api/health
+          node scripts/wait-http.mjs http://localhost:3018
+      - run: npm run test:e2e
+      - run: npm run test:restore
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-evidence
+          path: |
+            artifacts/playwright-report
+            artifacts/test-results
+            artifacts/*360.png
+            artifacts/projection-1920.png
+            artifacts/restore-result.json
+            artifacts/api.log
+            artifacts/web.log
+          retention-days: 7

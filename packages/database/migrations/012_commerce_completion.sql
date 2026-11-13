@@ -1,0 +1,15 @@
+BEGIN;
+CREATE TABLE credit_requests(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),club_id uuid NOT NULL REFERENCES clubs,requested_by uuid NOT NULL REFERENCES users,units integer NOT NULL CHECK(units BETWEEN 1 AND 1000),reference text,status text NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','APPROVED','REJECTED')),reviewed_by uuid REFERENCES users,reason text,created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(club_id,id));
+ALTER TABLE credit_requests ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_scope ON credit_requests USING(club_id=nullif(current_setting('app.club_id',true),'')::uuid) WITH CHECK(club_id=nullif(current_setting('app.club_id',true),'')::uuid);
+GRANT SELECT,INSERT,UPDATE ON credit_requests TO msn_runtime;
+ALTER TABLE credit_grants ADD COLUMN request_id uuid UNIQUE;
+ALTER TABLE credit_grants ADD FOREIGN KEY(club_id,request_id) REFERENCES credit_requests(club_id,id);
+CREATE TABLE provider_refunds(provider text NOT NULL,refund_id text NOT NULL,order_id uuid NOT NULL REFERENCES orders,amount_minor bigint NOT NULL CHECK(amount_minor>0),PRIMARY KEY(provider,refund_id));
+GRANT SELECT,INSERT ON provider_refunds TO msn_runtime;
+ALTER TABLE orders ADD COLUMN payment_id text;
+CREATE FUNCTION platform_credit_requests() RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$SELECT CASE WHEN is_platform_operator() THEN coalesce((SELECT jsonb_agg(jsonb_build_object('id',r.id,'clubId',r.club_id,'clubName',c.name,'units',r.units,'reference',r.reference,'status',r.status)) FROM credit_requests r JOIN clubs c ON c.id=r.club_id),'[]'::jsonb) ELSE NULL END$$;
+REVOKE ALL ON FUNCTION platform_credit_requests() FROM PUBLIC;GRANT EXECUTE ON FUNCTION platform_credit_requests() TO msn_runtime;
+CREATE FUNCTION reconciliation_orders() RETURNS TABLE(id uuid,club_id uuid,provider_reference text,amount_minor bigint,currency text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$SELECT o.id,o.club_id,o.provider_reference,o.amount_minor,o.currency FROM orders o WHERE is_platform_operator() AND o.status='PENDING' AND o.provider_reference IS NOT NULL ORDER BY o.id LIMIT 100$$;
+REVOKE ALL ON FUNCTION reconciliation_orders() FROM PUBLIC;GRANT EXECUTE ON FUNCTION reconciliation_orders() TO msn_runtime;
+COMMIT;

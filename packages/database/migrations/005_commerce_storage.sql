@@ -1,0 +1,12 @@
+BEGIN;
+CREATE TABLE platform_operators(user_id uuid PRIMARY KEY REFERENCES users,enabled boolean NOT NULL DEFAULT true);
+CREATE FUNCTION is_platform_operator() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$SELECT EXISTS(SELECT 1 FROM platform_operators WHERE user_id=nullif(current_setting('app.actor_id',true),'')::uuid AND enabled)$$;
+CREATE FUNCTION payment_scope(reference text) RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$SELECT club_id FROM orders WHERE provider='RAZORPAY' AND provider_reference=reference$$;
+REVOKE ALL ON FUNCTION is_platform_operator(),payment_scope(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION is_platform_operator(),payment_scope(text) TO msn_runtime;
+GRANT SELECT ON credit_products TO msn_runtime;
+GRANT SELECT,INSERT,UPDATE ON orders,provider_events TO msn_runtime;
+ALTER TABLE lots ADD COLUMN created_at timestamptz NOT NULL DEFAULT clock_timestamp();
+CREATE FUNCTION photo_registration(registration uuid) RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$SELECT r.profile_snapshot->>'photoKey' FROM registrations r JOIN auctions a ON a.id=r.auction_id WHERE r.id=registration AND r.status='APPROVED' AND a.public_visible$$;
+REVOKE ALL ON FUNCTION photo_registration(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION photo_registration(uuid) TO msn_runtime;
+COMMIT;

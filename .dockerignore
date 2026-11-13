@@ -1,0 +1,15 @@
+node_modules
+**/.next
+dist
+.git
+.env
+.env.*
+artifacts
+graphify-out
+prototype
+infra/s3.local.json
+
+.aws
+.codex
+.agents
+**/AGENTS.md
